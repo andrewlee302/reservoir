@@ -16,16 +16,18 @@ import reservoir.example.util.StreamFileMetaUtil;
 public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
 
     private static final Logger logger = Logger.getLogger(StreamSourceHandler.class.getName());
-    private long  counter;
+    private long counter;
     private long lineCounter;
     private long startTime, batchStartTime;
     private long batchInterval;
     private int clientsNum = 2;
     
     private int lineNumForSplitParam = 100;
-    private String streamFileDirParam = "/tmp/nettyTest/server/cached/";
+    
     
     private BufferedOutputStream[] writers;
+    
+    private final String streamFileServerdir = StreamFileMetaUtil.getStreamFileServerDirParam();
     
     /**
      * 
@@ -42,11 +44,11 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
         // if not equal, then report the exception
         // TODO
         writers = new BufferedOutputStream[clientsNum];
-        System.out.println("Connecting the APP!");
-        counter = 1;
+        counter = StreamFileMetaUtil.INITIAL_COUNTER;
         lineCounter = 1;
         batchStartTime = startTime = System.currentTimeMillis();
         try {
+            logger.info("New counter is produced(counter = " + 1 + ")");
             initWriters(writers);
         } catch (IOException e) {
             logger.log(Level.SEVERE, "Failed in initializing the file handler", e);
@@ -57,7 +59,6 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
     public void channelRead0(ChannelHandlerContext ctx, Object msg) {
         long now = System.currentTimeMillis();
         lineCounter += 1;
-//        System.out.println("lineCounter : " + lineCounter);
         if(now - batchStartTime < batchInterval){
             writeToLocalFile(ctx, msg, counter, counter);
         } else {
@@ -69,9 +70,8 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
     }
     
     private void initWriters(BufferedOutputStream[] writers) throws IOException{
-        System.out.println("Initial writers");
         for(int i = 0; i < writers.length; i++){
-            File file = new File(streamFileDirParam + StreamFileMetaUtil.generateFileNameAndStore(counter, batchStartTime, i, clientsNum));
+            File file = new File(streamFileServerdir + StreamFileMetaUtil.generateFileNameAndStore(counter, batchStartTime, i, clientsNum));
             if(!file.exists()){
                 if(!file.createNewFile())
                     throw new IOException("Can't create the file:" + file.getPath());
@@ -82,9 +82,10 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
     
     private void writeToLocalFile(ChannelHandlerContext ctx, Object msg, long oldCounter, long newCounter) {
         if(!(newCounter == oldCounter + 1) && !(newCounter == oldCounter)){
-            logger.log(Level.SEVERE, "Old counter and new counter is not normal");
+            logger.severe("Old counter and new counter is not normal");
         }
         if(newCounter == oldCounter + 1) {
+            logger.info("New counter is produced(counter = " + newCounter+ ")");
             try {
                 initWriters(writers);
             } catch (IOException e) {
@@ -95,7 +96,6 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
         BufferedOutputStream w = writers[(int) (lineCounter / lineNumForSplitParam) % clientsNum];
         try {
             ByteBuf in = (ByteBuf) msg;
-            System.out.println("\nreceive  counter:" + newCounter);
             while (in.isReadable()) {
                 byte b = in.readByte();
                 w.write(b);

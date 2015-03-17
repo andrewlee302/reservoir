@@ -7,12 +7,10 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpHeaders.Values;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
@@ -28,11 +26,9 @@ import io.netty.handler.codec.http.multipart.InterfaceHttpData;
 import io.netty.util.CharsetUtil;
 
 import java.io.IOException;
-import java.nio.charset.Charset;
 
 public class HelloWorldServerHandler extends SimpleChannelInboundHandler<HttpObject> {
     private static final byte[] CONTENT = { 'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd' };
-    private boolean isChunked;
     private HttpDataFactory factory = new DefaultHttpDataFactory(DefaultHttpDataFactory.MINSIZE);
     private HttpPostRequestDecoder decoder;
 
@@ -48,12 +44,10 @@ public class HelloWorldServerHandler extends SimpleChannelInboundHandler<HttpObj
     public void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
         if (msg instanceof HttpRequest) {
             HttpRequest req = (HttpRequest) msg;
-            boolean keepAlive = HttpHeaders.isKeepAlive(req);
             // FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, OK,
             // Unpooled.wrappedBuffer(CONTENT));
             // response.headers().set(CONTENT_TYPE, "text/plain");
             // response.headers().set(CONTENT_LENGTH, response.content().readableBytes());
-            isChunked = HttpHeaders.isTransferEncodingChunked(req);
             if (req.getMethod().equals(HttpMethod.POST)) {
                 decoder = new HttpPostRequestDecoder(factory, req);
             } else if(req.getMethod().equals(HttpMethod.GET)){
@@ -67,7 +61,6 @@ public class HelloWorldServerHandler extends SimpleChannelInboundHandler<HttpObj
                 readHttpDataChunkByChunk();
                 if (msg instanceof LastHttpContent) {
                     writeResponse(ctx);
-                    isChunked = false;
                     reset();
                 }
             }

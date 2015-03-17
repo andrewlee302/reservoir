@@ -10,7 +10,6 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpHeaders.Values;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
@@ -34,34 +33,49 @@ import io.netty.util.CharsetUtil;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Logger;
 
 import reservoir.example.util.STAGE;
+import reservoir.example.util.StreamFileMetaUtil;
+
+
+// TODO Whether it need synchronization when transfer the files in multi-channels. 
 
 public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpObject> {
 
-    private boolean readingChunks;
+    private static final Logger logger = Logger.getLogger(StreamFileReceiverHandler.class.getName());
+    
+    private static AtomicInteger rankCounter = new AtomicInteger(0);
+    
     private STAGE stage;
+    private long counter;
 
     private final StringBuilder responseContent = new StringBuilder();
 
     private static final HttpDataFactory factory = new DefaultHttpDataFactory(
             DefaultHttpDataFactory.MINSIZE);
     private HttpPostRequestDecoder decoder;
-    private String destDir = "/tmp/nettyTest/client/";
+    
+    private int rank = 0;
+    private String destDir;
 
     static {
         DiskFileUpload.deleteOnExitTemporaryFile = true;
-        DiskFileUpload.baseDirectory = "/tmp/nettyTest/client/tmp/";
+        DiskFileUpload.baseDirectory = null;
         DiskAttribute.deleteOnExitTemporaryFile = true;
         DiskAttribute.baseDirectory = null;
     }
 
+    public StreamFileReceiverHandler(){
+        rank = rankCounter.getAndIncrement();
+        destDir = StreamFileMetaUtil.getStreamFileClientDirParam() + rank + "/";
+    }
+    
     @Override
     public void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
         if (msg instanceof HttpRequest) {
             HttpRequest request = (HttpRequest) msg;
-            readingChunks = HttpHeaders.isTransferEncodingChunked(request);
             if (request.getMethod().equals(HttpMethod.POST)) {
                 decoder = new HttpPostRequestDecoder(factory, request);
             } else if (request.getMethod().equals(HttpMethod.GET)) {
@@ -73,12 +87,17 @@ public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpO
             URI uri = new URI(request.getUri());
             System.out.println(request.getUri());
             if (uri.getPath().startsWith("/ready")) {
+                logger.info("Get the READY request");
                 stage = STAGE.READY;
+            } else if (uri.getPath().startsWith("/rank")) {
+                logger.info("Get the RANK request");
+                stage = STAGE.RANK;
             } else if (uri.getPath().startsWith("/uploadFile")) {
+                logger.info("Get the UPLOAD_FILE request");
+                logger.info("Start to receive the file");
                 stage = STAGE.UPLOAD_FILE;
-                System.out.println("Start to receive the file");
             } else {
-                System.out.println("ERROR");
+                logger.warning("Invalid request");
             }
         }
         if (decoder != null) {
@@ -95,22 +114,20 @@ public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpO
 
                 if (chunk instanceof LastHttpContent) {
                     switch (stage) {
+                    case RANK:
+                        responseContent.append(rank);
+                        break;
                     case READY:
-                        System.out.println("Register succeed");
                         responseContent.append("READY_OK");
                         break;
                     case UPLOAD_FILE:
-                        System.out.println("UPLOAD_SUCCESS");
                         responseContent.append("UPLOAD_SUCCESS");
                         break;
                     default:
-                        System.out.println("Unknown operation");
-                        responseContent.append("Unknown operation");
                         reset();
                         return;
                     }
                     writeResponse(ctx);
-                    readingChunks = false;
                     reset();
                 }
             }
@@ -149,25 +166,35 @@ public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpO
     private void writeHttpData(InterfaceHttpData data) throws IOException {
         if (data.getHttpDataType() == HttpDataType.Attribute) {
             Attribute attr = (Attribute) data;
-            System.out.println(attr);
+            if(attr.getName().equals("counter")){
+                counter = Long.parseLong(attr.getValue());
+                logger.info("--->Get the counter from the request:" + counter);
+            } else {
+                logger.info("--->" + attr);
+            }
         } else if (data.getHttpDataType() == HttpDataType.FileUpload) {
             FileUpload fileUpload = (FileUpload) data;
-            String filename = fileUpload.getFilename();
+            String uploadFileName = fileUpload.getFilename();
+            logger.info("--->Receiving file's name: " + uploadFileName);
             if (fileUpload.isCompleted()) {
                 if (fileUpload.length() < 10000) {
-                    System.out.println("File length is less than 10000");
+                    logger.info("File length is less than 10000");
                 } else {
-                    System.out.println("File length is more than 10000");
+                    logger.info("File length is more than 10000");
                 }
-                Random r = new Random();
-                StringBuffer fileNameBuf = new StringBuffer();
-                fileNameBuf.append(destDir).append("U").append(System.currentTimeMillis());
-                fileNameBuf.append(String.valueOf(r.nextInt(10))).append(
-                        String.valueOf(r.nextInt(10)));
-                fileNameBuf.append(filename.substring(filename.lastIndexOf(".")));
-
-                fileUpload.renameTo(new File(fileNameBuf.toString()));
-                System.out.println(filename + "isInMemroy:" + fileUpload.isInMemory());
+                String storeFileName = destDir + uploadFileName; //+ StreamFileMetaUtil.getFileNameByCounterAndRank(counter, rank); 
+//                Random r = new Random();
+//                StringBuffer fileNameBuf = new StringBuffer();
+//                fileNameBuf.append(destDir).append("U").append(System.currentTimeMillis());
+//                fileNameBuf.append(String.valueOf(r.nextInt(10))).append(
+//                        String.valueOf(r.nextInt(10)));
+//                fileNameBuf.append(filename.substring(filename.lastIndexOf(".")));
+                logger.info("--->Write the file to disk");
+                long startTime = System.currentTimeMillis();
+                if(fileUpload.renameTo(new File(storeFileName))){
+                    logger.info("--->Write completed");
+                    logger.info("--->Time taken :" + (System.currentTimeMillis() - startTime)/1000.0 + "s");;
+                }
                 decoder.removeHttpDataFromClean(fileUpload);
             }
         }

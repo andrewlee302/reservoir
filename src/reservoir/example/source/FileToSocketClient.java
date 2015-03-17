@@ -30,7 +30,6 @@ public class FileToSocketClient {
         DiskFileUpload.baseDirectory = "/tmp/nettyTest/source/tmp/";
         DiskAttribute.deleteOnExitTemporaryFile = true;
         DiskAttribute.baseDirectory = null;
-
     }
 
     public static void main(String[] args) throws Exception {
@@ -53,44 +52,41 @@ public class FileToSocketClient {
 
              final Channel channel = b.connect(HOST, PORT).sync().channel();
              final long start = System.currentTimeMillis();
-            
-             HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1,
-             HttpMethod.POST, "/");
-             HttpHeaders headers = request.headers();
-            
-             headers.set(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
-
-             HttpPostRequestEncoder bodyRequestEncoder = new HttpPostRequestEncoder(factory, request, true); 
-//             bodyRequestEncoder.addBodyAttribute("name", "value");
-//             bodyRequestEncoder.addBodyAttribute("ccc", "李");
-             File myFile = new File(FILEPATH);
-             bodyRequestEncoder.addBodyFileUpload("myfile",myFile , "text/xml", false);
-             System.out.println(myFile.length()/1024.0/1024 + "M");
-             request = bodyRequestEncoder.finalizeRequest();
-             
-             
-             channel.write(request);
-             if (bodyRequestEncoder.isChunked()) {
-                 channel.write(bodyRequestEncoder).addListener(new ChannelFutureListener() {
-                     @Override
-                     public void operationComplete(ChannelFuture future) {
-                         long end = System.currentTimeMillis();
-                         System.out.println("Total transfer time : " + (end - start) / 1000 + "s");
-                         channel.close();
-                     }
-                 });
+             for(int i = 0 ; i < 100; i ++) {
+                 HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1,
+                 HttpMethod.POST, "/");
+                 HttpHeaders headers = request.headers();
+                
+                 headers.set(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
+    
+                 HttpPostRequestEncoder bodyRequestEncoder = new HttpPostRequestEncoder(factory, request, true); 
+                 File myFile = new File(FILEPATH);
+                 bodyRequestEncoder.addBodyFileUpload("myfile",myFile , "text/xml", false);
+                 // System.out.println(myFile.length()/1024.0/1024 + "M");
+                 request = bodyRequestEncoder.finalizeRequest();
+                 
+                 
+                 channel.write(request);
+                 if (bodyRequestEncoder.isChunked()) {
+                     channel.write(bodyRequestEncoder).addListener(new ChannelFutureListener() {
+                         @Override
+                         public void operationComplete(ChannelFuture future) {
+                             long end = System.currentTimeMillis();
+                             System.out.println("Total transfer time : " + (end - start) / 1000 + "s");
+                             // channel.close();
+                         }
+                     });
+                 }
+                 channel.flush();
+                 bodyRequestEncoder.cleanFiles();
+                 Thread.sleep(1000);
              }
-             channel.flush();
-             bodyRequestEncoder.cleanFiles();
-             
-             
-            
 //            HttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
 //            HttpHeaders headers = request.headers();
 //            headers.set(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
 //            headers.set(HttpHeaders.Names.CONTENT_LENGTH, 0);
 //            channel.writeAndFlush(request);
-            channel.closeFuture().sync();
+             channel.closeFuture().sync();
         } finally {
             group.shutdownGracefully();
         }
