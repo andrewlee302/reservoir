@@ -19,6 +19,7 @@ import io.netty.util.CharsetUtil;
 
 import java.io.File;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
@@ -71,56 +72,22 @@ public class StreamFileServerHandler extends SimpleChannelInboundHandler<HttpObj
         if (msg instanceof FullHttpResponse) {
             FullHttpResponse response = (FullHttpResponse) msg;
 
-            // System.out.println(response.content().toString(CharsetUtil.UTF_8));
             String referer = response.headers().get("Refer-Command");
-            // System.out.println("referer = " + referer);
             if (referer == null) {
                 System.err.println("The refer-command is null");
             } else if (referer.equalsIgnoreCase(STAGE.RANK.name())) {
                 // stage = STAGE.RANK;
                 rank = Integer.parseInt(response.content().toString(CharsetUtil.UTF_8));
                 logger.info("Get the #rank:" + rank);
-                requestReadyCommand(ctx);
-            } else if (referer.equalsIgnoreCase(STAGE.READY.name())) {
-                // stage = STAGE.READY;
-                logger.info("READY");
-                postFile(ctx, new File(streamFileServerdir + StreamFileMetaUtil.getFileNameByCounterAndRank(counter, rank)));
+                checkReady();
+                postFile(ctx, new File(new URI(streamFileServerdir + StreamFileMetaUtil.getFileNameByCounterAndRank(counter, rank))));
             } else if (referer.equalsIgnoreCase(STAGE.UPLOAD_FILE.name())) {
                 // stage = STAGE.UPLOAD_FILE;
-                requestReadyCommand(ctx);
-                // postFile(new File(uploadFile));
-                // ctx.channel().close();
+                checkReady();
+                postFile(ctx, new File(new URI(streamFileServerdir + StreamFileMetaUtil.getFileNameByCounterAndRank(counter, rank))));
             }
             return;
         }
-        
-        // if (msg instanceof HttpContent) {
-        // System.out.println("error");
-        // HttpContent chunk = (HttpContent) msg;
-        //
-        // if (chunk instanceof LastHttpContent) {
-        // if (readingChunks) {
-        // System.out.println("Chunked");
-        // } else {
-        // System.out.println("UnChunked");
-        // }
-        // switch (stage) {
-        // case READY:
-        // postFile(new File(uploadFile));
-        // break;
-        // case UPLOAD_FILE:
-        // System.out.println("END");
-        // ctx.channel().close();
-        // break;
-        // default:
-        // System.out.println("Unknown operation");
-        // break;
-        // }
-        // readingChunks = false;
-        // } else {
-        // System.out.println(chunk.content().toString(CharsetUtil.UTF_8));
-        // }
-        // }
     }
     
     private void requestRank(ChannelHandlerContext ctx) {
@@ -135,29 +102,16 @@ public class StreamFileServerHandler extends SimpleChannelInboundHandler<HttpObj
         ctx.flush();
     }
 
-    private void requestReadyCommand(ChannelHandlerContext ctx) throws Exception {
+    private void checkReady() throws Exception {
         logger.info("Request for ready signal");
         logger.info("---->Check whether the next counter file(counter = "+ (counter + 1) +") is finished writing");
-        long tmpCounter = StreamFileMetaUtil.getLastFinishCounter();
-        while(tmpCounter <= counter){
+        
+        while(!StreamFileMetaUtil.canSafelyTransfer(counter+1)){
             // TODO sleep param, based on batch interval
             Thread.sleep(100);
-            tmpCounter = StreamFileMetaUtil.getLastFinishCounter();
         }
         counter++;
         logger.info("---->Counter = " + counter  + " file is finished");
-        HttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST,
-                REQ_READY);
-        for (Entry<String, String> entry : headers) {
-            request.headers().set(entry.getKey(), entry.getValue());
-        }
-        HttpPostRequestEncoder bodyRequestEncoder = new HttpPostRequestEncoder(factory, request,
-                false);
-        bodyRequestEncoder.addBodyAttribute("counter", String.valueOf(counter));
-        request = bodyRequestEncoder.finalizeRequest();
-        // request.headers().set(HttpHeaders.Names.CONTENT_LENGTH, 0);
-        ctx.write(request);
-        ctx.flush();
     }
 
     private void postFile(ChannelHandlerContext ctx, File file) throws Exception {
@@ -196,21 +150,6 @@ public class StreamFileServerHandler extends SimpleChannelInboundHandler<HttpObj
         if (headers == null) {
             headers = new DefaultHttpHeaders();
             headers.set(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
-            // headers.set(HttpHeaders.Names.ACCEPT_ENCODING, HttpHeaders.Values.GZIP +
-            // ','
-            // + HttpHeaders.Values.DEFLATE);
-            //
-            // headers.set(HttpHeaders.Names.ACCEPT_CHARSET,
-            // "ISO-8859-1,utf-8;q=0.7,*;q=0.7");
-            // headers.set(HttpHeaders.Names.ACCEPT_LANGUAGE, "us");
-            // headers.set(HttpHeaders.Names.USER_AGENT, "Netty Simple Http Client side");
-            // headers.set(HttpHeaders.Names.ACCEPT,
-            // "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-
-            // connection will not close but needed
-            // headers.set("Connection","keep-alive");
-            // headers.set("Keep-Alive","300");
-
         }
         return headers;
     }

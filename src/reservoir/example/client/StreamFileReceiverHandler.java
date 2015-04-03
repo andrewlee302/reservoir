@@ -33,7 +33,7 @@ import io.netty.util.CharsetUtil;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.net.URISyntaxException;
 import java.util.logging.Logger;
 
 import reservoir.example.util.STAGE;
@@ -46,7 +46,7 @@ public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpO
 
     private static final Logger logger = Logger.getLogger(StreamFileReceiverHandler.class.getName());
     
-    private static AtomicInteger rankCounter = new AtomicInteger(0);
+    // private static AtomicInteger rankCounter = new AtomicInteger(0);
     
     private STAGE stage;
     private long counter;
@@ -67,9 +67,9 @@ public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpO
         DiskAttribute.baseDirectory = null;
     }
 
-    public StreamFileReceiverHandler(){
-        rank = rankCounter.getAndIncrement();
-        destDir = StreamFileMetaUtil.getStreamFileClientDirParam() + rank + "/";
+    public StreamFileReceiverHandler(int rank){
+        this.rank = rank;
+        destDir = StreamFileMetaUtil.getStreamFileClientDirParam();
     }
     
     @Override
@@ -86,10 +86,7 @@ public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpO
 
             URI uri = new URI(request.getUri());
             System.out.println(request.getUri());
-            if (uri.getPath().startsWith("/ready")) {
-                logger.info("Get the READY request");
-                stage = STAGE.READY;
-            } else if (uri.getPath().startsWith("/rank")) {
+            if (uri.getPath().startsWith("/rank")) {
                 logger.info("Get the RANK request");
                 stage = STAGE.RANK;
             } else if (uri.getPath().startsWith("/uploadFile")) {
@@ -116,9 +113,6 @@ public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpO
                     switch (stage) {
                     case RANK:
                         responseContent.append(rank);
-                        break;
-                    case READY:
-                        responseContent.append("READY_OK");
                         break;
                     case UPLOAD_FILE:
                         responseContent.append("UPLOAD_SUCCESS");
@@ -159,7 +153,8 @@ public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpO
                     }
                 }
             }
-        } catch (EndOfDataDecoderException e1) {
+        } catch (EndOfDataDecoderException e) {
+            e.printStackTrace();
         }
     }
 
@@ -182,20 +177,24 @@ public class StreamFileReceiverHandler extends SimpleChannelInboundHandler<HttpO
                 } else {
                     logger.info("File length is more than 10000");
                 }
-                String storeFileName = destDir + uploadFileName; //+ StreamFileMetaUtil.getFileNameByCounterAndRank(counter, rank); 
-//                Random r = new Random();
-//                StringBuffer fileNameBuf = new StringBuffer();
-//                fileNameBuf.append(destDir).append("U").append(System.currentTimeMillis());
-//                fileNameBuf.append(String.valueOf(r.nextInt(10))).append(
-//                        String.valueOf(r.nextInt(10)));
-//                fileNameBuf.append(filename.substring(filename.lastIndexOf(".")));
-                logger.info("--->Write the file to disk");
+                String storeFileName = destDir + uploadFileName;
+                logger.info("--->Write the file to disk :" + storeFileName);
                 long startTime = System.currentTimeMillis();
-                if(fileUpload.renameTo(new File(storeFileName))){
-                    logger.info("--->Write completed");
-                    logger.info("--->Time taken :" + (System.currentTimeMillis() - startTime)/1000.0 + "s");;
+                File storeFile = null;
+                try {
+                    storeFile = new File(new URI(storeFileName));
+                    if(!storeFile.getParentFile().exists())
+                        storeFile.getParentFile().mkdirs();
+                    if(fileUpload.renameTo(storeFile)){
+                        logger.info("--->Write completed");
+                        logger.info("--->Time taken :" + (System.currentTimeMillis() - startTime)/1000.0 + "s");;
+                    }else
+                        System.out.println("Write failed");
+                     decoder.removeHttpDataFromClean(fileUpload);
+                } catch (URISyntaxException e) {
+                    e.printStackTrace();
                 }
-                decoder.removeHttpDataFromClean(fileUpload);
+                
             }
         }
     }

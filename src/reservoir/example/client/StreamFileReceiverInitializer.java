@@ -8,9 +8,10 @@ import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
 
 public class StreamFileReceiverInitializer extends ChannelInitializer<SocketChannel> {
+    private int rank;
 
-
-    public StreamFileReceiverInitializer() {
+    public StreamFileReceiverInitializer(int rank) {
+        this.rank = rank;
     }
 
     @Override
@@ -20,6 +21,6 @@ public class StreamFileReceiverInitializer extends ChannelInitializer<SocketChan
         pipeline.addLast(new HttpRequestDecoder());
         pipeline.addLast(new HttpResponseEncoder());
 
-        pipeline.addLast(new StreamFileReceiverHandler());
+        pipeline.addLast(new StreamFileReceiverHandler(rank));
     }
 }

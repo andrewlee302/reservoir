@@ -13,27 +13,48 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 public final class StreamFileReceiver {
     static final String HOST = "127.0.0.1";
     static final int PORT = 8080;
+    static int rankCounter = 0;
 
     public static void main(String[] args) throws Exception {
-        EventLoopGroup group = new NioEventLoopGroup();
-        EventLoopGroup group1 = new NioEventLoopGroup();
+        new Thread(new Runnable(){
 
-        try {
-            Bootstrap b = new Bootstrap();
-            b.group(group).channel(NioSocketChannel.class)
-                    .handler(new StreamFileReceiverInitializer());
-            Channel c = b.connect(HOST, PORT).sync().channel();
+            @Override
+            public void run() {
+                EventLoopGroup group = new NioEventLoopGroup();
+
+                try {
+                    Bootstrap b = new Bootstrap();
+                    b.group(group).channel(NioSocketChannel.class)
+                            .handler(new StreamFileReceiverInitializer(rankCounter++));
+                    Channel c = b.connect(HOST, PORT).sync().channel();
+                    c.closeFuture().sync();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } finally {
+                    group.shutdownGracefully();
+                }
+            }
             
-            Bootstrap b1 = new Bootstrap();
-            b1.group(group1).channel(NioSocketChannel.class)
-                    .handler(new StreamFileReceiverInitializer());
-            Channel c1 = b1.connect(HOST, PORT).sync().channel();
+        }).start();
+        new Thread(new Runnable(){
 
-            c.closeFuture().sync();
-            c1.closeFuture().sync();
+            @Override
+            public void run() {
+                EventLoopGroup group = new NioEventLoopGroup();
 
-        } finally {
-            group.shutdownGracefully();
-        }
+                try {
+                    Bootstrap b = new Bootstrap();
+                    b.group(group).channel(NioSocketChannel.class)
+                            .handler(new StreamFileReceiverInitializer(rankCounter++));
+                    Channel c = b.connect(HOST, PORT).sync().channel();
+                    c.closeFuture().sync();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } finally {
+                    group.shutdownGracefully();
+                }
+            }
+            
+        }).start();
     }
 }

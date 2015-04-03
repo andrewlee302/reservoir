@@ -8,6 +8,8 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -20,10 +22,8 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
     private long lineCounter;
     private long startTime, batchStartTime;
     private long batchInterval;
-    private int clientsNum = 2;
-    
-    private int lineNumForSplitParam = 100;
-    
+    private int clientsNum;
+    private long lineNumForSplitParam;
     
     private BufferedOutputStream[] writers;
     
@@ -32,9 +32,23 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
     /**
      * 
      * @param _batchInterval batch interval in milliseconds
+     * @param _clientsNum
+     * @param _lineNumForSplitParam
      */
-    public StreamSourceHandler(long _batchInterval){
+    public StreamSourceHandler(long _batchInterval, int _clientsNum, long _lineNumForSplitParam){
         batchInterval = _batchInterval;
+        clientsNum = _clientsNum;
+        lineNumForSplitParam = _lineNumForSplitParam;
+    }
+    
+    /**
+     * 
+     * @param _batchInterval
+     * @param _clientsNum
+     * Default value of lineNumForSplitParam is 100
+     */
+    public StreamSourceHandler(long _batchInterval, int _clientsNum){
+        this(_batchInterval, _clientsNum, 100);
     }
     
     @Override
@@ -48,7 +62,7 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
         lineCounter = 1;
         batchStartTime = startTime = System.currentTimeMillis();
         try {
-            logger.info("New counter is produced(counter = " + 1 + ")");
+            logger.info("New counter is producing(counter = " + 1 + ")");
             initWriters(writers);
         } catch (IOException e) {
             logger.log(Level.SEVERE, "Failed in initializing the file handler", e);
@@ -71,10 +85,20 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
     
     private void initWriters(BufferedOutputStream[] writers) throws IOException{
         for(int i = 0; i < writers.length; i++){
-            File file = new File(streamFileServerdir + StreamFileMetaUtil.generateFileNameAndStore(counter, batchStartTime, i, clientsNum));
-            if(!file.exists()){
-                if(!file.createNewFile())
-                    throw new IOException("Can't create the file:" + file.getPath());
+            if(writers[i] != null){
+                writers[i].flush();
+                writers[i].close();
+                writers[i] = null;
+            }
+            File file = null;
+            try {
+                file = new File(new URI(streamFileServerdir + StreamFileMetaUtil.generateFileNameAndStore(counter, batchStartTime, i, clientsNum)));
+                if(file != null && !file.exists()){
+                    if(!file.createNewFile())
+                        throw new IOException("Can't create the file:" + file.getPath());
+                }
+            } catch (URISyntaxException e) {
+                e.printStackTrace();
             }
             writers[i] = new BufferedOutputStream(new FileOutputStream(file));
         }
@@ -85,7 +109,7 @@ public class StreamSourceHandler extends SimpleChannelInboundHandler<Object> {
             logger.severe("Old counter and new counter is not normal");
         }
         if(newCounter == oldCounter + 1) {
-            logger.info("New counter is produced(counter = " + newCounter+ ")");
+            logger.info("New counter is producing(counter = " + newCounter+ ")");
             try {
                 initWriters(writers);
             } catch (IOException e) {

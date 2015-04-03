@@ -8,11 +8,15 @@ public class StreamFileMetaUtil {
 
     private static Map<Long, String[]> metas;
     
-    private static long counter = INITIAL_COUNTER - 1;
+    private static long counter = INITIAL_COUNTER - 1; // the number of batch which is being writing
     
-    private static String streamFileServerDirParam = "/tmp/nettyTest/server/cached/";
+    private static long lastestFinishedTransferCounter = INITIAL_COUNTER - 1;
     
-    private static String streamFileClientDirParam = "/tmp/nettyTest/client/cached/";
+    
+    // TODO scheme is important, local file don 
+    private static String streamFileServerDirParam = "file:///tmp/nettyTest/server/cached/";
+    
+    private static String streamFileClientDirParam = "file:///tmp/nettyTest/client/cached/";
     
     public static void setStreamFileServerDirParam(String dir) {
         streamFileServerDirParam = dir;
@@ -66,7 +70,20 @@ public class StreamFileMetaUtil {
         }
     }
     
-    public static long getLastFinishCounter(){
-        return counter - 1;
+    /**
+     * 
+     * @param requestTransferCounter The request transferring counter of batch at the server dispatcher
+     * @return
+     */
+    public static boolean canSafelyTransfer(long requestTransferCounter){
+        lastestFinishedTransferCounter = requestTransferCounter - 1;
+        if(requestTransferCounter <= counter - 1)
+            return true;
+        else
+            return false;
+    }
+    
+    public static long getLastestFinishedTransferCounter() {
+        return lastestFinishedTransferCounter;
     }
 }
